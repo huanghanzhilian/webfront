@@ -1,0 +1,382 @@
+import Vue from 'vue'
+import VueRouter from 'vue-router'
+import routes from './router/router'
+import store from './store/'
+import {routerMode} from './config/env'
+import './config/rem'
+import wx from 'weixin-js-sdk'
+import FastClick from 'fastclick'
+import 'src/style/fontsr.css'
+import {autoGraph} from 'src/service/getData'
+import $ from 'zepto'
+import getPhoneNum from 'src/plugins/getPhoneNum'
+//import {mapMutations, mapState,store} from 'vuex'
+//jQuery
+//console.log(getPhoneNum);
+//console.log($.getPhoneNum)
+import {getStore,setStore} from 'src/config/mUtils'
+
+
+/*var appId = "qiaogongyi";
+var url = "/qgy/get/mobileNum?appId="+appId;
+$.ajax({
+    url:url,
+    type: 'GET',
+    dataType:"JSONP",
+    jsonp: "callbackparam",    //跨域请求的参数名，默认是callback
+    processData: false,
+    success: function (data) {
+	   console.log(data)
+	},
+	error: function() {
+        //请求出错处理
+     }
+})*/
+/*$.get(url,function(obj){
+	console.log(obj)
+})*/
+/*$.get(url,function(obj){
+	console.log(obj)
+    $.getPhoneNum({
+        data:{
+            sign:obj,//服务器返回的签名;
+            appId:appId //分配到的id
+        },
+        success:function(data){
+        	console.log(data)
+            //$("#phone").text(data.object.phone)
+        },
+        error:function(data){
+        	console.log(data)
+            //$("#mes").text(JSON.stringify(data,null,2))
+        }
+    })
+})*/
+
+
+if ('addEventListener' in document) {
+    document.addEventListener('DOMContentLoaded', function() {
+        FastClick.attach(document.body);
+    }, false);
+}
+
+Vue.use(VueRouter)
+
+const router = new VueRouter({
+	routes,
+	mode: routerMode,
+	strict: process.env.NODE_ENV !== 'production',
+	scrollBehavior (to, from, savedPosition) {
+	    if (savedPosition) {
+		    return savedPosition
+		} else {
+			if (from.meta.keepAlive) {
+				from.meta.savedPosition = document.body.scrollTop;
+			}
+		    return { x: 0, y: to.meta.savedPosition ||0}
+		}
+	},
+})
+
+
+Vue.prototype.getToek=function(){
+	//请求判断是否取号
+	var userId=getStore('userId')?getStore('userId'):'';
+	$.ajax({
+	    url:'/qgy/get/userAttribute',
+	    type: 'GET',
+	    data:{"userId":userId},
+	    success: function (data) {
+		   //如果返回用户信息成功
+		   if(data.success){
+		   		setStore('hasRegistWx',data.object.hasRegistWx);
+		   		setStore('iSstate',"1");
+				setStore('userInfo', data.object.userInfo);
+				setStore('userPhone', data.object.userPhone);
+		   }else{
+		   		setStore('hasRegistWx',"0");
+		   		setStore('iSstate',"0");
+		   		setStore('userInfo', {});
+		   		setStore('userPhone', "");
+		   }
+		},
+		error: function() {
+	        //请求出错处理
+	     }
+	})
+}
+
+//微信授权
+Vue.prototype.warrAnts=function(){
+	//当前url
+	var appid="wx44f0c0399de653fd";
+    var resultUrl=encodeURI(window.location.href);
+    var open="https://open.weixin.qq.com/connect/oauth2/authorize?appid="
+        + appid
+        + "&redirect_uri="
+        + resultUrl
+        + "&response_type=code&scope=snsapi_userinfo&state=STATE#wechat_redirect";
+    //this.$router.push('market')
+    //
+    window.location.href=open;
+}
+
+
+
+
+
+
+//是否取号接口判断
+var getToeks=function(){
+	//请求判断是否取号
+	var userId=getStore('userId')?getStore('userId'):'';
+	$.ajax({
+	    url:'/qgy/get/userAttribute',
+	    type: 'GET',
+	    data:{"userId":userId},
+	    //dataType:"JSONP",
+	    //jsonp: "callbackparam",    //跨域请求的参数名，默认是callback
+	    //processData: false,
+	    success: function (data) {
+		   //console.log(data)
+		   //如果返回用户信息成功
+		   if(data.success){
+		   		setStore('hasRegistWx',data.object.hasRegistWx);
+		   		setStore('iSstate',"1");
+				setStore('userInfo', data.object.userInfo);
+				setStore('userPhone', data.object.userPhone);
+		   		//hasRegistWx: "0",//是否关注微信，0否，1是
+		   		//如果取过号he没有手机号  执行取号
+		   		if(data.object.hasQuhao=="0"&&data.object.hasBindPhone=="0"){
+		   			setToek();
+		   		}
+		   		//store.commit('SET_QUHAOPO', data.object);
+		   }else{
+		   		setStore('hasRegistWx',"0");
+		   		setStore('iSstate',"0");
+		   		setStore('userInfo', {});
+		   		setStore('userPhone', "");
+		   		setToek();
+		   }
+		},
+		error: function() {
+	        //请求出错处理
+	     }
+	})
+}
+
+
+//取号成功调用接口
+var successobj=function(phone){
+	var userId=getStore('userId')?getStore('userId'):'';
+	$.ajax({
+        url:"qgy/update/saveUser",
+        data:{
+            phone:phone,
+            userId:userId
+        },
+        success:function(data){
+        	if(data.message){
+        		//alert(data.success)
+        		setStore('userId',data.message);
+        	}
+        	//console.log("成功")
+        },
+    })
+}
+
+//执行取号
+var setToek=function(){
+	var appId = "qiaogongyi";
+	var url = "/qgy/get/mobileNum?appId="+appId;
+	$.get(url,function(obj){
+
+		$.getPhoneNum({
+            data:{
+                sign:obj,//服务器返回的签名;
+                appId:appId //分配到的id
+            },
+            success:function(data){
+            	//console.log(data.object.phone)
+            	if(data.object.phone&&data.object.phone!=undefined){
+            		successobj(data.object.phone);
+            	}
+				// 示例：$("#phone").text(data.object.phone)
+            },
+            error:function(data){
+            	console.log(JSON.stringify(data,null,2))
+				// 示例：$("#mes").text(JSON.stringify(data,null,2))
+            }
+        })
+
+	})
+}
+
+router.beforeEach((to, from, next) => {
+	var url = window.location.href;
+	//var url = "http://zisha.meiyuefu.com/?from=singlemessage&isappinstalled=0#/details?goodsId=47&shareId=152";
+	//url = "http://zisha.meiyuefu.com/#/msite";
+	//url = "http://zisha.meiyuefu.com/#/details?goodsId=47&shareId=152&from=singlemessage&isappinstalled=0"
+	//alert(url);
+	var prefix = "?";
+	var second = "#";
+	var fir = url.indexOf(prefix);
+	var sec = url.indexOf(second);
+	// 包含#
+	var new_url = "";
+	if (sec >= 0) {
+		if (fir < 0) {
+		// 不包含？
+			var u_pre = url.substring(0, sec);
+			var u_suffix = url.substring(sec + 2);
+			new_url = u_pre + u_suffix;
+		} else if (fir < sec) {
+		// ? 在 # 号之前
+			//alert("entry")
+			var u_pre = url.substring(0, fir);
+			alert(fir);
+			alert(u_pre);
+			var u_suffix = url.substring(sec + 2);
+			new_url = u_pre + u_suffix;
+		} else {
+		// ? 在 # 号之后
+			var u_pre = url.substring(0, sec);
+			var u_suffix = url.substring(sec + 2);
+			new_url = u_pre + u_suffix;
+		}
+	}
+	//alert(new_url);
+	url = new_url;
+
+    getToeks();
+    //console.log(from)
+    //console.log(to)
+    next();
+})
+Vue.prototype.wxShare = function (title, desc, link,image='http://qgy.oss-cn-beijing.aliyuncs.com/qgy/icon/logo/logo.png') {
+	//获取域名
+	/*var host=location.host;
+	//获取子路径
+	var pathname=location.pathname.substring(1);
+	//获取参数
+	var search=location.search;
+	//拼接子路径和参数
+	var path="?path="
+	console.log(host)
+	console.log(pathname)
+	console.log(search)*/
+	//获取当前url
+	var url = location.href;
+	
+
+	
+	// url = "http://zisha.meiyuefu.com/?dfadasafsdfdasads#/details?goodsId=46&shareId=45";
+	// alert(url);
+	/*var new_url = "";
+
+	var endPos = url.indexOf("#");
+    var prefix = "http://zisha.meiyuefu.com/"
+    // var prefix = "localhost:8000/"
+    var begPos = url.indexOf(prefix);
+
+    if (endPos < 0) {
+    	// 无#
+    	new_url = prefix + "#/";
+    	if (begPos >= 0) {
+    		suffix = url.substring(begPos + prefix.length);
+    		alert(suffix);
+    		new_url = new_url + suffix;
+    	}
+    } else {
+    	var suffix = url.substring(endPos + 1);
+    	if (suffix.indexOf("/") == 0) {
+    		suffix = suffix.substring(1);
+    	}
+    	//console.log(suffix);
+    	new_url = prefix + "#/" + suffix;
+    }
+
+	link = new_url;
+	url = new_url;*/
+
+
+	link = location.href;
+	url = encodeURIComponent(url);
+	//alert("我是給微信的url"+link);
+	//alert("我是給後端的url"+url);
+	//console.log("我是給微信的url"+link);
+	//console.log("我是給後端的url"+url);
+
+
+	//请求获取微信签名信息
+	autoGraph(url).then(res => {
+		//alert(image)
+		// 获得签名配置
+		var Data = res.object;
+
+		// config信息验证后会执行ready方法，所有接口调用都必须在config接口获得结果之后，config是一个客户端的异步操作，
+		wx.config({
+			debug: false, // 开启调试模式,调用的所有api的返回值会在客户端alert出来，若要查看传入的参数，可以在pc端打开，参数信息会通过log打出，仅在pc端时才会打印。
+			appId: Data.appId,   // 必填，公众号的唯一标识
+			timestamp: Data.timestamp, // 必填，生成签名的时间戳
+			nonceStr: Data.noncestr,   // 必填，生成签名的随机串
+			signature: Data.signature, // 必填，签名，见附录1
+			jsApiList: ['onMenuShareAppMessage', 'onMenuShareTimeline'] // 必填，需要使用的JS接口列表，所有JS接口列表见附录2
+		});
+	});
+
+	wx.ready(() => {
+	    // 所以如果需要在页面加载时就调用相关接口，则须把相关接口放在ready函数中调用来确保正确执行。对于用户触发时才调用的接口，
+	    // 则可以直接调用，不需要放在ready函数中。
+	    wx.onMenuShareAppMessage({ // 分享给朋友
+	      title: title, // 分享标题
+	      desc: desc,   // 分享描述
+	      link: link,   // 分享链接 默认以当前链接
+	      imgUrl: image,// 分享图标
+	      // 用户确认分享后执行的回调函数
+	      success: function () {
+	      	//alert('成功')
+	      },
+	      // 用户取消分享后执行的回调函数
+	      cancel: function () {
+	      	//alert('分享到朋友取消')
+	        //console.log('分享到朋友取消');
+	      }
+	    });
+
+
+
+	    //分享到朋友圈
+		wx.onMenuShareTimeline({
+			title: title, // 分享标题
+			desc: desc,
+			link: link,
+			imgUrl: image,
+			// 用户确认分享后执行的回调函数
+			success: function () {
+				//alert('成功')
+			},
+			// 用户取消分享后执行的回调函数
+			cancel: function () {
+				//alert('分享到朋友圈取消')
+				//console.log('分享到朋友圈取消');
+			}
+		});
+	});
+
+	wx.error(function(res){
+    	// config信息验证失败会执行error函数，如签名过期导致验证失败，具体错误信息可以打开config的debug模式查看，
+    	// 也可以在返回的res参数中查看，对于SPA可以在这里更新签名。
+    	//alert(JSON.stringify(res))
+    	//console.log(res)
+	});
+
+
+}
+
+
+new Vue({
+	router,
+	store,
+}).$mount('#app')
+

@@ -1,0 +1,711 @@
+<template>
+	<!-- 组件盒子 -->
+	<div v-if="isShow" class="cart_container">
+		<!-- 公共头部 -->
+		<head-top goBack="true" :head-title="headTitle">
+            <p class="right_edit" slot="right_edit" v-on:click="isedit = !isedit">
+	            <span v-show="!isedit">编辑</span>
+	            <span v-show="isedit">取消</span>
+	        </p>
+    	</head-top>
+    	<!-- 公共头部 -->
+
+
+    	<!-- 清单主内容 -->
+	    <section class="catContainer" v-if="!showLoading">
+	    	<!--<div>{{mucartList}}</div>-->
+	        <ul class="" v-load-more="loaderMore" v-if="cartListArr.length">
+	        	<router-link v-for="(item,index) in cartListArr" tag='div' :to='{path: "/details", query:{ goodsId: item.goodsId}}' class="shop_li" >
+	        		<div class="checklist">
+	        		    <span class="check" :class="{checked:item.isSelected}" @click="chk(index,$event)"></span>
+	        		</div>
+	        		<section class="image_wrap">
+	        			<img :src="item.attachmentUrl">
+	        		</section>
+	        		<div class="cart_iten_info">
+						<p class="info_title">{{item.goodsName}}</p>
+						<!--<p class="info_describe">待定</p>-->
+						<p class="info_money">￥ {{item.price}}</p>
+						<div class="info_num" @click="deleteprevent($event)">
+							<div class="husopp">库存仅{{item.remainCount}}件</div>
+							<div class="edit-quantity">
+								<p class="btn-minus" @touchstart="minusNum(index)"><span class="btn minus icon">－</span></p>
+                    			<p class="btn-input">{{item.goodsNum}}</p>
+                    			<p class="btn-plus" @touchstart="plusNum(index)"><span class="btn plus icon">＋</span></p>
+							</div>
+						</div>
+					</div>
+	        	</router-link>
+	        </ul>
+
+	        
+
+	        <p v-if="touchendtext" class="empty_data">没有更多了</p>
+
+	        <div class="cartEdit">
+        		<div class="alsleft">
+        			<div class="chk">
+		                <span class="check" :class="{checked:checkedAll}" @click="chkAll()"></span>
+		                <span>全选</span>
+		                <span v-show="!isedit && countPrice" class="catriten_money">￥ {{countPrice}}</span>
+		            </div>
+        		</div>
+        		<div class="but_wrap">
+        			<div class="btn">
+		               <a v-if="!isedit" @click="confirmOrder(countPricelen)" class="weui_btn weui_btn_warn" :class="{settlement:countPrice}">结算
+		               <span v-if="countPricelen!=''">({{countPricelen}})</span></a>
+
+		               <a @click="deleteCart(countPricelen)" v-if="isedit" class="weui_btn weui_btn_warn" :class="{settlement:countPricelen}">删除
+		               <span v-if="countPricelen!=''">({{countPricelen}})</span>
+		               </a>
+		            </div>
+        		</div>
+	        </div>
+	        <div class="cartEdits"></div>
+	    </section>
+
+	    <div class="no_log" v-if="!cartListArr.length">
+            <img src="../../images/icon/kongzhuangtai_icon_quanbu@2x.png">
+            <p>目前数据为空</p>
+        </div>
+
+
+    	<!-- 动画loading -->
+		<transition name="loading">
+			<loading v-show="showLoading"></loading>
+		</transition>
+		<!-- 动画loading -->
+
+    	<!-- 公共底部 -->
+    	<foot-guide></foot-guide>
+    	<!-- 公共底部 -->
+
+    	<toast ref="toast"></toast>
+    	<dialo-gue v-if="showAlert" :showHide="showAlert" @closeTip="closeTip" @dialoGue="dialoGue" :alertText="alertText"></dialo-gue>
+	</div>
+</template>
+
+<script>
+
+//引入vuex全局缓存
+import {mapState, mapMutations} from 'vuex'
+//引入环境切换配置
+import {imgBaseUrl} from 'src/config/env'
+import {getStore,setStore,removeStore} from 'src/config/mUtils'
+import {getShoppingGoodsPage,sendLogins,updateCartGoodsNum,updateCartGoodsSelected,removeShoppingGoods} from 'src/service/getData'
+//页面头部
+import headTop from 'src/components/header/head'
+//页面尾部
+import footGuide from 'src/components/footer/footGuide'
+
+//loading
+import loading from 'src/components/common/loading'
+import Toast from 'src/components/common/Toast'
+import dialoGue from '../../components/common/dialoGue'
+import {loadMore, getImgPath} from 'src/components/common/mixin'
+import ratingStar from 'src/components/common/ratingStar'
+
+
+export default {
+	//数据
+	data(){
+		return {
+			headTitle:"购物车",//页面标题
+			isedit :  false,  //用于切换编辑
+			showLoading: true, //显示加载动画
+			preventRepeatReuqest: false, //到达底部加载数据，防止重复加载
+
+			pagenum:1,//页码
+			querySize:10,//页条数
+
+			cartListArr:[], // 列表数据
+			isShow:false,//是否显示页面
+
+			checkedAll:false,  //用于全选
+
+			showAlert: false, //显示对话框组件
+			alertText: null, //提示的内容
+
+			touchend: false, //没有更多数据不再加载
+			touchendtext:false,//没有更多数据展示
+		}
+	},
+	created(){
+
+    },
+	//开始创建  vue后自动执行
+	mounted(){
+		//this.initData();
+		if(getStore('hasRegistWx')=="1"){
+        	//alert(1)
+            this.initData();
+            this.isShow=true;
+        }else if(this.$route.query.code){
+        	//alert(2)
+        	this.enshrines();
+        }else{
+        	this.warrAnt();
+        }
+	},
+	//需要使用的模块
+	components: {
+		headTop,
+		footGuide,
+		loading,
+		Toast,
+		dialoGue,
+		ratingStar
+	},
+
+	//父组件的参数书
+	props: [],
+
+	//需要引用的外部js方法
+	mixins: [loadMore, getImgPath],
+
+	//计算值 这里可以实时监听某个数据的变化
+	computed: {
+		...mapState([
+			'mucartList'
+		]),
+		//计算选中商品 存入缓冲区
+		chsopobj:function(){
+			let catriten_money=[];
+			this.cartListArr.forEach(function (res) {
+            	if(res.isSelected){
+            		let obj={"goodsId":res.goodsId,"goodsNum":res.goodsNum}
+            		catriten_money.push(obj);
+            	}else{
+            		//console.log("no");
+            	}
+            });
+            return catriten_money;
+		},
+		//计算价格
+		countPrice:function(){
+			let catriten_money=0;
+			this.cartListArr.forEach(function (res) {
+            	if(res.isSelected){
+            		catriten_money+=parseInt(res.price) * parseInt(res.goodsNum);
+            	}else{
+            		//console.log("no");
+            	}
+            })
+            return catriten_money;
+		},
+		//计算选中长度
+		countPricelen:function(){
+			let catriten_money=0;
+			this.cartListArr.forEach(function (res) {
+            	if(res.isSelected){
+            		catriten_money++;
+            	}else{
+            		//console.log("no");
+            	}
+            });
+            catriten_money=catriten_money==0?'':catriten_money;
+            return catriten_money;
+		},
+		//获取选中数组索引
+		getIddelete:function(){
+			let catriten_money=[];
+			this.cartListArr.forEach(function (res,len) {
+            	if(res.isSelected){
+            		catriten_money.push(res.goodsId);
+            	}else{
+            		//console.log("no");
+            	}
+            });
+
+            return catriten_money.join();
+		},
+	},
+	updated(){
+		// console.log(this.supportIds, this.sortByType)
+	},
+	//方法
+	methods: {
+		//注入vuex方法
+		...mapMutations([
+            'SET_MUCART','SER_USERINFOH'
+        ]),
+
+
+		async initData(){
+			//获取数据
+			let res = await getShoppingGoodsPage(this.pagenum, this.querySize);
+			this.cartListArr = [...res.object];
+
+
+			//修改是否选中
+			//this.cartListArr.isSelected=="1"?true:false;
+			this.cartListArr.forEach(function (res) {
+				res.isSelected=res.isSelected=="1"?true:false;
+            })
+
+
+            //初始化判断是否全选
+            this.initIsAll();
+
+            if (res.object.length < this.querySize) {
+				this.touchend = true;
+			}
+
+            //关闭Loading
+			this.hideLoading();
+		},
+
+		//loading隐藏方式
+		hideLoading(){
+			this.showLoading = false;
+		},
+
+		//到达底部加载更多数据
+		async loaderMore(){
+			if (this.touchend) {
+				return
+			}
+			//防止重复请求
+			if (this.preventRepeatReuqest) {
+				return
+			}
+			//显示动画
+			this.showLoading = true;
+			this.preventRepeatReuqest = true;
+
+			//数据页码+1
+			this.pagenum+=1;
+			let res = await getShoppingGoodsPage(this.pagenum, this.querySize);
+			this.cartListArr = [...this.cartListArr, ...res.object];
+			//修改是否选中
+			//this.cartListArr.isSelected=="1"?true:false;
+			this.cartListArr.forEach(function (res) {
+				res.isSelected=res.isSelected=="1"?true:false;
+            });
+            //初始化判断是否全选
+            this.initIsAll();
+
+
+
+			this.hideLoading();
+			//当获取数据小于20，说明没有更多数据，不需要再次请求数据
+			if (res.object.length < this.querySize) {
+				this.touchend = true;
+				this.touchendtext= true;
+				return
+			}
+			this.preventRepeatReuqest = false;
+		},
+
+		//去结算
+        confirmOrder(len){
+        	if(len==0){
+				return
+			}
+			this.$router.push('/confirmOrder')
+        },
+		//删除
+		deleteCart(len){
+			if(len==0){
+				return
+			}
+			this.showAlert = true;
+            this.alertText = "确定要删除"+len+"个商品吗？";
+		},
+		closeTip(){
+            this.showAlert = false;
+        },
+        async dialoGue(){
+        	await removeShoppingGoods(this.getIddelete).then(res => {
+        		if(res.success){
+        			this.$refs.toast.show('删除成功');
+        			this.initData();
+        		}else{
+        			this.$refs.toast.show('删除失败');
+        		}
+
+        	});
+        	//removeShoppingGoods
+
+
+        	this.showAlert = false;
+        	//this.$router.push('login')
+        },
+
+		/**
+         * 当前商品添加数量
+         * @param  {[type]} index [数组索引值]
+         * @return {[type]}       [description]
+         */
+        plusNum(index){
+            let item = this.cartListArr[index];
+            //获取商品剩余数量
+            let limitNum = parseInt(item.remainCount);
+            //获取购物车item数量
+            let buyCount = parseInt(item.goodsNum);
+            if (index !== -1){
+                if (limitNum <= buyCount){
+                    //this.$refs.toast.show('超过了限制范围');
+                    return
+                }else{
+                   ++item.goodsNum;
+                   this.updateCart(item.shoppingCartId,item.goodsNum);
+                }
+            }
+        },
+        /**
+         * 当前商品添加减少数量
+         * @param  {[type]} index [数组索引值]
+         * @return {[type]}       [description]
+         */
+        minusNum(index){
+            if (index !== -1) {
+                let item = this.cartListArr[index];
+                if(item.goodsNum > 1){
+                   --item.goodsNum;
+                   this.updateCart(item.shoppingCartId,item.goodsNum);
+                }
+            }
+        },
+
+        //冒泡事件去除
+        deleteprevent(event){
+        	event.preventDefault();
+        },
+
+        /**
+         * 选择商品
+         * @param  {[type]} index [数组索引值]
+         * @return {[type]}       [description]
+         */
+        chk(index,event) {
+        	event.preventDefault();
+            this.cartListArr[index].isSelected = !this.cartListArr[index].isSelected;
+
+            //console.log(Array.prototype.every)
+            let r = this.cartListArr.every(this.checked);
+            /*this.cartListArr.forEach(function (res) {
+            	if(res.isSelected){
+            		console.log("ok")
+            	}else{
+            		console.log("no")
+            	}
+            	//console.log(res.isSelected)
+            })*/
+            //console.log(r)
+            if(r){
+                this.checkedAll = true;
+                //console.log("all true");
+            }else{
+                this.checkedAll = false;
+                //console.log("not all true");
+            }
+            let staet=this.cartListArr[index].isSelected==true?'1':'0';
+            //发送后台
+            this.updateGoodsSelected(this.cartListArr[index].shoppingCartId,staet);
+        },
+        //初始化判断是否为全选
+        initIsAll(){
+        	let r = this.cartListArr.every(this.checked);
+        	if(this.cartListArr.length){
+        		if(r){
+	                this.checkedAll = true;
+	            }else{
+	                this.checkedAll = false;
+	            }
+        	}
+        },
+
+        /**
+         * 全选商品按钮
+         * @return {[type]} [description]
+         */
+        chkAll(){
+            this.checkedAll = !this.checkedAll;
+            for (let i = 0; i < this.cartListArr.length; i++) {
+                if (this.checkedAll === true)
+                   this.cartListArr[i].isSelected = true;
+                else
+                   this.cartListArr[i].isSelected = false;
+            }
+        },
+
+        /**
+         * 判断单商品是否全选
+         * @param  {[type]} item [description]
+         * @return {[type]}      [description]
+         */
+        checked(item) {
+            if(item.isSelected)
+                return true;
+            else
+                return false;
+        },
+
+
+        // 更新订单数量
+        async updateCart(id,goodsNum){
+        	let res = await updateCartGoodsNum(id,goodsNum);
+            //console.log(res);
+        },
+
+        // 更新订单是否选中
+        async updateGoodsSelected(id,selected){
+        	let res = await updateCartGoodsSelected(id,selected);
+        },
+
+
+
+
+		//查看是否是微信重定向来的
+        async enshrines(){
+        	var shareId=getStore('shareId')?getStore('shareId'):'';
+    		this.userInfos = await sendLogins(this.$route.query.code,shareId);
+            if(this.userInfos.success){
+                this.SER_USERINFOH(this.userInfos.object);
+                //alert(JSON.stringify(this.userInfos.object))
+                this.initData();
+            	this.isShow=true;
+            }
+        },
+        //微信授权类
+        warrAnt(){
+        	//当前url
+        	var appid="wx44f0c0399de653fd";
+            var resultUrl=encodeURI(window.location.href);
+            var open="https://open.weixin.qq.com/connect/oauth2/authorize?appid="
+                + appid
+                + "&redirect_uri="
+                + resultUrl
+                + "&response_type=code&scope=snsapi_userinfo&state=STATE#wechat_redirect";
+            //this.$router.push('market')
+            window.location.href=open;
+        },
+
+	},
+
+	watch: {
+		chsopobj:function(v){
+			this.SET_MUCART(v);
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+	@import 'src/style/mixin';
+
+
+	//无数据样式
+    .no_log{
+        text-align: center;
+        margin-top: 1rem;
+        padding:2rem;
+        img{
+            @include wh(100%, auto);
+        }
+        p{
+            margin-top: .5rem;
+            @include sc(.7rem, #666);
+        }
+    }
+
+	.empty_data{
+		@include sc(0.5rem, #666);
+		text-align: center;
+		line-height: 2rem;
+	}
+
+	.catriten_money{
+		margin-left:3.5rem;
+		color:#B4282D;
+	}
+
+	.cart_container{
+		padding-top: 1.95rem;
+    	padding-bottom: 4rem;
+    	font-size:.56rem;
+	}
+	.catContainer{
+		padding:0rem .6rem;
+		background-color:#fff;
+	}
+	.shop_li{
+		display: flex;
+		border-bottom: 0.025rem solid #f1f1f1;
+        background-color:#fff;
+        margin-bottom:.1rem;
+        padding:.5rem 0;
+        .cart_iten_info{
+        	flex: auto;
+        	position: relative;
+        	line-height: 1rem;
+        	.info_title{
+
+        	}
+        	.info_describe{
+        		color:#818181;
+        		font-size:.48rem;
+        	}
+        	.info_money{
+				position: absolute;
+				bottom: 0;
+        	}
+        }
+        .checklist{
+        	width:1rem;
+        	margin-top: .9rem;
+        	margin-right:.4rem;
+    		text-align: center;
+        }
+        .image_wrap{
+        	img{
+        		width:2.8rem;
+        		height:2.8rem;
+        		display: block;
+    			margin-right: .4rem;
+        	}
+        }
+	}
+
+	.check{
+	    color: #999;
+	    border-radius: 50%;
+        border: 0.025rem solid #D8D8D8;
+        display: inline-block;
+	    width: .64rem;
+	    height: .64rem;
+	    background: #fff;
+	    box-sizing: border-box;
+	    padding: 0;
+	    -webkit-appearance: none;
+	    outline: 0;
+	    vertical-align: middle;
+	}
+	.checked{
+		background:#B4282D url(../../images/icon/gouwuche_icon_xuanzhong@1x.png) no-repeat;
+        background-size:100% 100%;
+        border: 0.025rem solid #B4282D;
+	}
+	.info_num{
+		position:absolute;
+		right:0;
+		bottom:0;
+		.husopp{
+			color: #818181;
+			font-size:.44rem;
+		}
+		.edit-quantity{
+		    line-height: .8rem;
+			display:block;
+            display:flex;
+            box-align: center;
+            -webkit-box-align: center;
+            -ms-flex-align: center;
+            align-items: center;
+            background-color:#fff;
+            border: 0.025rem solid #D8D8D8;
+            border-radius: 3px;
+            width:2.9rem;
+            max-width:3.5rem;
+            text-align: center;
+            color: #818181;
+            a{
+            	width:100%;
+            	display:block;
+            	color: #818181;
+            }
+            .btn-minus{
+            	width:30%;
+            	color: #818181;
+            }
+            .btn-plus{
+            	width:30%;
+            	color: #818181;
+            }
+            .btn-input{
+            	width:40%;
+            	border-left: 0.025rem solid #D8D8D8;
+            	border-right: 0.025rem solid #D8D8D8;
+            }
+
+
+		}
+	}
+
+
+
+	.cartEdit {
+	    position: fixed;
+	    bottom: 2rem;
+	    left: 0;
+	    z-index: 1000;
+	    width: 100%;
+		height:2rem;
+	    box-sizing: border-box;
+	    -moz-box-sizing: border-box;
+	    -webkit-box-sizing: border-box;
+	    background: #fff;
+	    display: -o-box;
+	    display: -ms-flexbox;
+	    display: flex;
+	    -webkit-box-align: center;
+	    -webkit-align-items: center;
+	    border-bottom: 0.025rem solid #f1f1f1;
+	        line-height: 2rem;
+
+	    .alsleft{
+			-webkit-box-flex: 1;
+	        -ms-flex-positive: 1;
+	        flex-grow: 1;
+	        margin-left:.6rem;
+	        vertical-align: middle;
+		}
+		.but_wrap{
+			width:6rem;
+			text-align: center;
+			color:#fff;
+			a{
+				width:100%;
+				height:100%;
+				display: block;
+				color:#fff;
+			}
+			.weui_btn_warn{
+				background:#D8D8D8;
+				span{
+					color:#fff;
+				}
+
+			}
+			.settlement{
+				background-color:#B4282D ;
+			}
+		}
+	}
+	.cartEdits {
+	    position: fixed;
+	    bottom: 3rem;
+	    left: 0;
+	    z-index: 999;
+	    width: 100%;
+	    height:1rem;
+
+	    background: #fff;
+	    display: block;
+	    display: -webkit-box;
+	    display: -webkit-flex;
+	    display: -ms-flexbox;
+	    display: flex;
+	    box-align: center;
+	    -webkit-box-align: center;
+	    -ms-flex-align: center;
+	    -webkit-align-items: center;
+	    align-items: center;
+	    box-shadow: 0 0 10px 1px rgba(7, 17, 27, 0.1);
+
+
+	}
+
+
+</style>
